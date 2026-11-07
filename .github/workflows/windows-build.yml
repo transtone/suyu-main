@@ -1,0 +1,66 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          vsversion: '2022'
+          toolset: '14.44'
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.3'
+          arch: win64_msvc2022_64
+          modules: qtcharts qtmultimedia
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          choco install vulkan-sdk -y --no-progress
+          $sdk = Get-ChildItem C:\VulkanSDK -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          "VULKAN_SDK=$($sdk.FullName)" >> $env:GITHUB_ENV
+          "$($sdk.FullName)\Bin" >> $env:GITHUB_PATH
+      - name: Configure
+        shell: bash
+        env:
+          MSYS_NO_PATHCONV: '1'
+        run: |
+          cmake -B build -GNinja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_QT=ON -DENABLE_QT_TRANSLATION=ON -DYUZU_USE_BUNDLED_QT=OFF \
+            -DYUZU_TESTS=OFF -DENABLE_WEB_SERVICE=OFF \
+            -DSUYU_NO_JIT=OFF -DSUYU_EXPORT_BUILD_KIT=ON
+      - name: Build
+        run: cmake --build build --target suyu suyu-cmd export-build-kit
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force _pkg | Out-Null
+          Copy-Item build\bin\suyu.exe, build\bin\suyu-cmd.exe _pkg\
+          Get-ChildItem build\bin -Filter *.dll | Copy-Item -Destination _pkg\
+          if (Test-Path build\bin\plugins) { Copy-Item build\bin\plugins _pkg\ -Recurse }
+          if (!(Test-Path build\bin\export-build-kit\manifest.json)) { throw 'Export build kit missing' }
+          Copy-Item build\bin\export-build-kit _pkg\ -Recurse
+          windeployqt --release --no-translations _pkg\suyu.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Qt deployment failed' }
+          python tools/package_policy/third_party_notices.py --package-dir _pkg
+          if ($LASTEXITCODE -ne 0) { throw 'License notices failed' }
+          Compress-Archive -Path _pkg\* -DestinationPath suyu-windows-x86_64.zip
+          python tools/package_policy/scan_release.py --kind windows suyu-windows-x86_64.zip
+          if ($LASTEXITCODE -ne 0) { throw 'Package-policy validation failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-standard
+          path: suyu-windows-x86_64.zip
+          if-no-files-found: error
