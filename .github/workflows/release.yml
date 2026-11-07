@@ -241,7 +241,7 @@ jobs:
           MSYS_NO_PATHCONV: '1'
         run: |
           cmake --version
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=ON -DYUZU_USE_BUNDLED_QT=OFF -DBUILD_TESTING=ON -DYUZU_TESTS=ON -DSUYU_RECOMPILER_CLI=ON -GNinja 2>&1 | tee cmake_configure.log
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DENABLE_QT=ON -DENABLE_QT_TRANSLATION=ON -DYUZU_USE_BUNDLED_QT=OFF -DBUILD_TESTING=ON -DYUZU_TESTS=ON -DSUYU_RECOMPILER_CLI=ON -GNinja 2>&1 | tee cmake_configure.log
           test ${PIPESTATUS[0]} -eq 0
       - name: Upload cmake log
         if: failure()
